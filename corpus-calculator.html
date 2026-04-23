@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corpus Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root {
+    --bg: #0e0f11; --surface: #16181c; --border: #2a2d35;
+    --accent: #c8f060; --accent2: #60c8f0; --accent3: #f0c060;
+    --danger: #f06060; --text: #e8eaf0; --muted: #6b7080; --card: #1c1f26;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; padding: 2rem 1rem; }
+  .container { max-width: 980px; margin: 0 auto; }
+  h1 { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+  .subtitle { font-size: 0.7rem; color: var(--muted); margin-bottom: 2rem; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .phases-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.5rem; margin-bottom: 2rem; }
+  .phase-card { border-radius: 8px; padding: 0.9rem 1rem; border: 1px solid var(--border); background: var(--card); }
+  .ph-num { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem; }
+  .ph-title { font-size: 0.8rem; font-weight: 500; margin-bottom: 0.15rem; }
+  .ph-detail { font-size: 0.63rem; color: var(--muted); line-height: 1.5; }
+  .ph1 { border-color: var(--accent); } .ph1 .ph-title { color: var(--accent); }
+  .ph2 { border-color: var(--accent3); } .ph2 .ph-title { color: var(--accent3); }
+  .ph3 { border-color: var(--accent2); } .ph3 .ph-title { color: var(--accent2); }
+  .ph4 .ph-title { color: var(--muted); }
+
+  .section-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.6rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+  .inputs-section { margin-bottom: 1.5rem; }
+  .inputs-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(175px,1fr)); gap: 0.75rem; }
+  .field { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem; }
+  .field.highlight { border-color: var(--accent2); }
+  .field label { display: block; font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.4rem; }
+  .field input { width: 100%; background: transparent; border: none; outline: none; font-family: 'DM Mono', monospace; font-size: 1rem; color: var(--accent); font-weight: 500; }
+  .field.highlight input { color: var(--accent2); }
+
+  .summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(155px,1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem; }
+  .stat.good { border-color: var(--accent); } .stat.warn { border-color: var(--accent3); }
+  .stat.danger { border-color: var(--danger); } .stat.info { border-color: var(--accent2); }
+  .stat-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.35rem; }
+  .stat-value { font-size: 1.2rem; font-weight: 500; }
+  .stat.good .stat-value { color: var(--accent); } .stat.warn .stat-value { color: var(--accent3); }
+  .stat.danger .stat-value { color: var(--danger); } .stat.info .stat-value { color: var(--accent2); }
+  .stat-sub { font-size: 0.63rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.4; }
+
+  .verdict { border-radius: 8px; padding: 1.1rem 1.4rem; margin-bottom: 1.5rem; font-size: 0.82rem; line-height: 1.8; border: 1px solid; }
+  .verdict.pass { border-color: var(--accent); background: rgba(200,240,96,0.05); }
+  .verdict.fail { border-color: var(--danger); background: rgba(240,96,96,0.05); }
+  .verdict strong { font-size: 0.95rem; display: block; margin-bottom: 0.35rem; }
+
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .chart-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.6rem; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  canvas { display: block; width: 100% !important; }
+
+  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 1.5rem; }
+  .table-header { padding: 0.9rem 1.1rem; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .show-toggle { background: none; border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.62rem; padding: 0.2rem 0.55rem; border-radius: 4px; cursor: pointer; letter-spacing: 0.08em; text-transform: uppercase; }
+  .show-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.71rem; }
+  thead th { background: var(--surface); padding: 0.65rem 0.9rem; text-align: right; font-size: 0.59rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  thead th:first-child, thead th:nth-child(2) { text-align: left; }
+  tbody tr { border-bottom: 1px solid rgba(42,45,53,0.5); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody td { padding: 0.55rem 0.9rem; text-align: right; }
+  tbody td:first-child, tbody td:nth-child(2) { text-align: left; color: var(--muted); }
+  .pos { color: var(--accent); } .neg { color: var(--danger); } .amwarn { color: var(--accent3); } .cinfo { color: var(--accent2); }
+  .phase-pill { display: inline-block; font-size: 0.58rem; padding: 0.1rem 0.4rem; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .pill-1 { background: rgba(200,240,96,0.12); color: var(--accent); }
+  .pill-2 { background: rgba(240,192,96,0.12); color: var(--accent3); }
+  .pill-3 { background: rgba(96,200,240,0.12); color: var(--accent2); }
+  .pill-4 { background: rgba(240,96,96,0.12); color: var(--danger); }
+  .bar-container { height: 3px; background: var(--border); border-radius: 2px; margin-top: 3px; }
+  .bar-fill { height: 100%; border-radius: 2px; }
+  .note { font-size: 0.68rem; color: var(--muted); line-height: 1.7; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 8px; }
+
+  .stepup-preview { background: var(--card); border: 1px solid var(--accent2); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+  .stepup-preview .sp-title { font-size: 0.62rem; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.75rem; }
+  .sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr)); gap: 0.5rem; }
+  .sp-item { background: var(--surface); border-radius: 6px; padding: 0.5rem 0.7rem; }
+  .sp-year { font-size: 0.6rem; color: var(--muted); }
+  .sp-sip { font-size: 0.85rem; color: var(--accent2); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.25rem;">
+    <h1>Corpus Planner</h1>
+    <button id="dlImgBtn" onclick="downloadPageImage(this)" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;margin-top:0.4rem;white-space:nowrap;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">⬇ Save as Image</button>
+  </div>
+  <p class="subtitle">Dynamic SIP Phases · Step-up SIP · SWP · Prepayment · Home Loan Payoff</p>
+
+  <!-- Inputs -->
+  <div class="inputs-section">
+    <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>SIP Investment Phases</span>
+      <button onclick="addSipPhase()" style="background:none;border:1px solid var(--accent2);color:var(--accent2);font-family:'DM Mono',monospace;font-size:0.6rem;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;">+ Add Phase</button>
+    </div>
+    <div id="sipPhaseList" style="display:flex;flex-direction:column;gap:0.6rem;margin-top:0.5rem;"></div>
+  </div>
+
+  <div class="inputs-section">
+    <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Loans</span>
+      <button onclick="addLoan()" style="background:none;border:1px solid var(--accent2);color:var(--accent2);font-family:'DM Mono',monospace;font-size:0.6rem;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;">+ Add Loan</button>
+    </div>
+    <div id="loanList" style="display:flex;flex-direction:column;gap:0.6rem;margin-top:0.5rem;"></div>
+  </div>
+
+  <div class="inputs-section">
+    <div class="section-label">Portfolio Return</div>
+    <div class="inputs-grid">
+      <div class="field highlight"><label>Return Rate (% p.a.)</label><input type="number" id="rate" value="0" step="0.5" oninput="recalc()"></div>
+    </div>
+  </div>
+
+  <div class="inputs-section">
+    <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Lump Sum Withdrawals</span>
+      <button onclick="addWithdrawal()" style="background:none;border:1px solid #a060f0;color:#a060f0;font-family:'DM Mono',monospace;font-size:0.6rem;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;">+ Add Lumpsum</button>
+    </div>
+    <div id="withdrawalList" style="display:flex;flex-direction:column;gap:0.6rem;margin-top:0.5rem;"></div>
+    <div id="prepayImpact" style="margin-top:0.75rem;font-size:0.73rem;line-height:1.9;padding:0 0.1rem;"></div>
+  </div>
+
+  <div class="inputs-section">
+    <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Systematic Withdrawals (SWP)</span>
+      <button onclick="addSwp()" style="background:none;border:1px solid #f0a030;color:#f0c060;font-family:'DM Mono',monospace;font-size:0.6rem;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;">+ Add SWP</button>
+    </div>
+    <div id="swpList" style="display:flex;flex-direction:column;gap:0.6rem;margin-top:0.5rem;"></div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="verdict"></div>
+
+  <div class="chart-wrap">
+    <div class="chart-title">
+      <span>Corpus balance & cumulative SWP withdrawals</span>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Accumulation</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>EMI Active</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>Depleted</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f060a0;border-radius:2px"></div>Cumul. Outflows</div>
+      </div>
+    </div>
+    <canvas id="chart" height="220"></canvas>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-header">
+      <span id="tableTitle">Year-by-year breakdown</span>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="tableSearch" placeholder="Search month/year…" oninput="renderTable(window._plannerData,window._plannerMr)"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:0.62rem;padding:0.2rem 0.55rem;border-radius:4px;outline:none;width:130px;">
+        <button class="show-toggle" id="viewToggleBtn" onclick="toggleView()">Monthly View</button>
+        <button class="show-toggle" id="toggleBtn" onclick="toggleTable()">Show All</button>
+        <button class="show-toggle" onclick="downloadExcel()" style="border-color:var(--accent3);color:var(--accent3);">⬇ Download Excel</button>
+      </div>
+    </div>
+    <div id="tableContainer"></div>
+  </div>
+
+  <div class="note">
+    * All investments earn the stated annual return compounded monthly.<br>
+    * Each SIP phase steps up annually from its own start date.<br>
+    * Net monthly drain on corpus = EMI − SIP (that month). As SIP grows, drain shrinks over time.<br>
+    * EMI fixed at loan sanction; does not change (prepayment not modelled here).<br>
+    * Projection assumes consistent returns. Actual MF/bond returns vary. Consult a financial advisor.
+  </div>
+</div>
+
+<script>
+let showAll = false;
+let viewMode = 'yearly'; // 'yearly' or 'monthly'
+
+// ── SIP Phase management ────────────────────────────────────────────────
+let sipPhases = [];
+let nextPhaseId = 1;
+
+function getSipForDate(date) {
+  return sipPhases.reduce((sum, ph) => {
+    if (date < ph.startDate || date > ph.endDate) return sum;
+    const mFromStart = monthDiff(ph.startDate, date);
+    const yr = Math.floor(mFromStart / 12);
+    let sip = (ph.stepupType === 'fixed')
+      ? ph.baseSip + (ph.stepup / 100000) * yr
+      : ph.baseSip * Math.pow(1 + ph.stepup / 100, yr);
+    if (ph.maxSip > 0) sip = Math.min(sip, ph.maxSip);
+    return sum + sip;
+  }, 0);
+}
+
+function addSipPhase() {
+  const id = nextPhaseId++;
+  sipPhases.push({ id, startDate: '2027-04', endDate: '2055-01', baseSip: 0.5, stepup: 0, stepupType: 'pct', maxSip: 0 });
+  renderSipPhases();
+  recalc();
+}
+
+function removeSipPhase(id) {
+  sipPhases = sipPhases.filter(ph => ph.id !== id);
+  renderSipPhases();
+  recalc();
+}
+
+function updateSipPhase(id, field, value) {
+  const ph = sipPhases.find(ph => ph.id === id);
+  if (ph) {
+    ph[field] = (field === 'baseSip' || field === 'stepup' || field === 'maxSip') ? (parseFloat(value) || 0) : value;
+  }
+  renderSipPhases();
+  recalc();
+}
+
+function renderSipPhases() {
+  const container = document.getElementById('sipPhaseList');
+  if (!sipPhases.length) {
+    container.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);padding:0.4rem 0;">No SIP phases. Click + Add Phase to add one.</div>`;
+    return;
+  }
+  container.innerHTML = sipPhases.map((ph, idx) => {
+    const phaseDurMonths = (ph.startDate && ph.endDate) ? Math.max(0, monthDiff(ph.startDate, ph.endDate) + 1) : 0;
+    const phaseDurYrs = Math.ceil(phaseDurMonths / 12);
+    const previewYrs = Math.min(10, phaseDurYrs || 1);
+    let spHtml = '';
+    for (let y = 0; y < previewYrs; y++) {
+      let s = (ph.stepupType === 'fixed')
+        ? ph.baseSip + (ph.stepup / 100000) * y
+        : ph.baseSip * Math.pow(1 + ph.stepup / 100, y);
+      const capped = ph.maxSip > 0 && s > ph.maxSip;
+      if (capped) s = ph.maxSip;
+      const yr = ph.startDate ? addMonths(ph.startDate, y * 12).split('-')[0] : (2026 + y);
+      spHtml += `<div class="sp-item"><div class="sp-year">${yr}${capped ? ' <span style="color:var(--accent3);font-size:0.5rem;">CAP</span>' : ''}</div><div class="sp-sip">${fmt(s)}</div></div>`;
+    }
+    return `
+      <div style="background:var(--card);border:1px solid var(--accent2);border-radius:8px;padding:0.85rem 1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+          <span style="font-size:0.62rem;color:var(--accent2);text-transform:uppercase;letter-spacing:0.08em;">SIP Phase ${idx + 1}</span>
+          <button onclick="removeSipPhase(${ph.id})" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.58rem;padding:0.15rem 0.45rem;border-radius:3px;cursor:pointer;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕ Remove</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;margin-bottom:0.75rem;">
+          <div>
+            <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Start Date</div>
+            <input type="month" value="${ph.startDate}"
+              onchange="updateSipPhase(${ph.id},'startDate',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:0.95rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;color-scheme:dark;">
+          </div>
+          <div>
+            <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">End Date</div>
+            <input type="month" value="${ph.endDate}"
+              onchange="updateSipPhase(${ph.id},'endDate',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:0.95rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;color-scheme:dark;">
+          </div>
+          <div>
+            <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">SIP ₹L/mo</div>
+            <input type="number" value="${ph.baseSip}" step="0.1" min="0"
+              onchange="updateSipPhase(${ph.id},'baseSip',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;">
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem;">
+              <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;line-height:1;">${ph.stepupType === 'fixed' ? 'Top-up ₹/yr' : 'Step-up %/yr'}</div>
+              <div style="display:flex;border:1px solid var(--border);border-radius:3px;overflow:hidden;font-size:0.55rem;font-family:'DM Mono',monospace;">
+                <button onclick="updateSipPhase(${ph.id},'stepupType','pct')" style="padding:0 0.28rem;border:none;cursor:pointer;font-size:0.55rem;font-family:'DM Mono',monospace;background:${ph.stepupType !== 'fixed' ? 'var(--accent2)' : 'transparent'};color:${ph.stepupType !== 'fixed' ? 'var(--bg)' : 'var(--muted)'};">%</button>
+                <button onclick="updateSipPhase(${ph.id},'stepupType','fixed')" style="padding:0 0.28rem;border:none;cursor:pointer;font-size:0.55rem;font-family:'DM Mono',monospace;background:${ph.stepupType === 'fixed' ? 'var(--accent2)' : 'transparent'};color:${ph.stepupType === 'fixed' ? 'var(--bg)' : 'var(--muted)'};">₹</button>
+              </div>
+            </div>
+            <input type="number" value="${ph.stepup}" step="${ph.stepupType === 'fixed' ? 500 : 1}" min="0"
+              onchange="updateSipPhase(${ph.id},'stepup',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;">
+          </div>
+          <div>
+            <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Max SIP ₹L/mo <span style="font-size:0.5rem;opacity:0.6;">(0 = no cap)</span></div>
+            <input type="number" value="${ph.maxSip}" step="0.5" min="0"
+              onchange="updateSipPhase(${ph.id},'maxSip',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent3);outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:var(--accent3);font-weight:500;padding:0.1rem 0;">
+          </div>
+        </div>
+        ${spHtml ? `<div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${ph.stepupType === 'fixed' ? 'Top-up' : 'Step-up'} Preview</div><div class="sp-grid">${spHtml}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Loan management ─────────────────────────────────────────────────────
+let loans = [];
+let lNextId = 1;
+
+function addLoan() {
+  loans.push({ id: lNextId++, emiStart: '', loan: 0, loanRate: 0, tenure: 0 });
+  renderLoans(); recalc();
+}
+
+function removeLoan(id) {
+  loans = loans.filter(l => l.id !== id);
+  renderLoans(); recalc();
+}
+
+function updateLoan(id, field, value) {
+  const l = loans.find(l => l.id === id);
+  if (l) { l[field] = (field === 'loan' || field === 'loanRate' || field === 'tenure') ? (parseFloat(value) || 0) : value; }
+  renderLoans(); recalc();
+}
+
+function renderLoans() {
+  const container = document.getElementById('loanList');
+  if (!loans.length) {
+    container.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);padding:0.4rem 0;">No loans added. Click + Add Loan to add one.</div>`;
+    return;
+  }
+  container.innerHTML = loans.map((l, idx) => `
+    <div style="background:var(--card);border:1px solid var(--accent2);border-radius:8px;padding:0.85rem 1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <span style="font-size:0.62rem;color:var(--accent2);text-transform:uppercase;letter-spacing:0.08em;">Loan ${idx + 1}</span>
+        <button onclick="removeLoan(${l.id})" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.58rem;padding:0.15rem 0.45rem;border-radius:3px;cursor:pointer;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕ Remove</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;">
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">EMI Start Date</div>
+          <input type="month" value="${l.emiStart}"
+            onchange="updateLoan(${l.id},'emiStart',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:0.95rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;color-scheme:dark;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Loan Amount (₹ Crore)</div>
+          <input type="number" value="${l.loan}" step="0.05" min="0"
+            onchange="updateLoan(${l.id},'loan',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Loan Rate (% p.a.)</div>
+          <input type="number" value="${l.loanRate}" step="0.1" min="0"
+            onchange="updateLoan(${l.id},'loanRate',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Tenure (Years)</div>
+          <input type="number" value="${l.tenure}" step="1" min="0"
+            onchange="updateLoan(${l.id},'tenure',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--accent2);outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:var(--accent2);font-weight:500;padding:0.1rem 0;">
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Withdrawal list management ──────────────────────────────────────────
+let withdrawals = []; // [{id, amt, date, type, reduce, loanId}]
+let wNextId = 1;
+
+function addWithdrawal() {
+  const id = wNextId++;
+  withdrawals.push({ id, amt: 0, date: '', type: 'personal', reduce: 'tenure', loanId: null });
+  renderWithdrawals();
+  recalc();
+}
+
+function removeWithdrawal(id) {
+  withdrawals = withdrawals.filter(w => w.id !== id);
+  renderWithdrawals();
+  recalc();
+}
+
+function updateWithdrawal(id, field, value) {
+  const w = withdrawals.find(w => w.id === id);
+  if (w) {
+    if (field === 'amt') w[field] = parseFloat(value) || 0;
+    else if (field === 'loanId') w[field] = value ? parseInt(value) : null;
+    else w[field] = value;
+  }
+  renderWithdrawals();
+  recalc();
+}
+
+function renderWithdrawals() {
+  const container = document.getElementById('withdrawalList');
+  if (!withdrawals.length) {
+    container.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);padding:0.4rem 0;">No lumpsum withdrawals added. Click + Add Lumpsum to add one.</div>`;
+    return;
+  }
+
+  const loanOptions = loans.map((l, i) => `<option value="${l.id}">Loan ${i + 1}</option>`).join('');
+
+  container.innerHTML = withdrawals.map(w => `
+    <div style="background:var(--card);border:1px solid #6030a0;border-radius:8px;padding:0.85rem 1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <span style="font-size:0.62rem;color:#a060f0;text-transform:uppercase;letter-spacing:0.08em;">Lumpsum #${w.id}</span>
+        <button onclick="removeWithdrawal(${w.id})" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.58rem;padding:0.15rem 0.45rem;border-radius:3px;cursor:pointer;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕ Remove</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;">
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Amount (₹L)</div>
+          <input type="number" value="${w.amt}" step="1" min="0"
+            onchange="updateWithdrawal(${w.id},'amt',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid #6030a0;outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:#a060f0;font-weight:500;padding:0.1rem 0;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Date</div>
+          <input type="month" value="${w.date}"
+            onchange="updateWithdrawal(${w.id},'date',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid #6030a0;outline:none;font-family:'DM Mono',monospace;font-size:0.95rem;color:#a060f0;font-weight:500;padding:0.1rem 0;color-scheme:dark;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Purpose</div>
+          <select onchange="updateWithdrawal(${w.id},'type',this.value)"
+            style="width:100%;background:var(--card);border:none;border-bottom:1px solid #6030a0;outline:none;font-family:'DM Mono',monospace;font-size:0.9rem;color:#a060f0;font-weight:500;padding:0.1rem 0;cursor:pointer;">
+            <option value="personal" ${w.type==='personal'?'selected':''}>Personal Use</option>
+            <option value="loan_prepay" ${w.type==='loan_prepay'?'selected':''}>Loan Prepayment</option>
+          </select>
+        </div>
+        ${w.type === 'loan_prepay' ? `
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Loan</div>
+          <select onchange="updateWithdrawal(${w.id},'loanId',this.value)"
+            style="width:100%;background:var(--card);border:none;border-bottom:1px solid #6030a0;outline:none;font-family:'DM Mono',monospace;font-size:0.9rem;color:#a060f0;font-weight:500;padding:0.1rem 0;cursor:pointer;">
+            <option value="">First Loan</option>
+            ${loanOptions}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Reduce</div>
+          <select onchange="updateWithdrawal(${w.id},'reduce',this.value)"
+            style="width:100%;background:var(--card);border:none;border-bottom:1px solid #6030a0;outline:none;font-family:'DM Mono',monospace;font-size:0.9rem;color:#a060f0;font-weight:500;padding:0.1rem 0;cursor:pointer;">
+            <option value="tenure" ${w.reduce==='tenure'?'selected':''}>Tenure (keep EMI)</option>
+            <option value="emi" ${w.reduce==='emi'?'selected':''}>EMI (keep tenure)</option>
+          </select>
+        </div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── SWP management ──────────────────────────────────────────────────────
+let swps = [];
+let swpNextId = 1;
+
+function addSwp() {
+  swps.push({ id: swpNextId++, startDate: '', endDate: '', amt: 0, frequency: 'monthly' });
+  renderSwps(); recalc();
+}
+
+function removeSwp(id) {
+  swps = swps.filter(s => s.id !== id);
+  renderSwps(); recalc();
+}
+
+function updateSwp(id, field, value) {
+  const s = swps.find(s => s.id === id);
+  if (s) { s[field] = field === 'amt' ? (parseFloat(value) || 0) : value; }
+  renderSwps(); recalc();
+}
+
+function renderSwps() {
+  const container = document.getElementById('swpList');
+  if (!swps.length) {
+    container.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);padding:0.4rem 0;">No SWPs added. Click + Add SWP to add one.</div>`;
+    return;
+  }
+  container.innerHTML = swps.map((s, idx) => `
+    <div style="background:var(--card);border:1px solid #f0a030;border-radius:8px;padding:0.85rem 1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <span style="font-size:0.62rem;color:#f0c060;text-transform:uppercase;letter-spacing:0.08em;">SWP ${idx + 1}</span>
+        <button onclick="removeSwp(${s.id})" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.58rem;padding:0.15rem 0.45rem;border-radius:3px;cursor:pointer;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕ Remove</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;">
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Start Date</div>
+          <input type="month" value="${s.startDate}"
+            onchange="updateSwp(${s.id},'startDate',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid #f0a030;outline:none;font-family:'DM Mono',monospace;font-size:0.95rem;color:#f0c060;font-weight:500;padding:0.1rem 0;color-scheme:dark;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">End Date</div>
+          <input type="month" value="${s.endDate}"
+            onchange="updateSwp(${s.id},'endDate',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid #f0a030;outline:none;font-family:'DM Mono',monospace;font-size:0.95rem;color:#f0c060;font-weight:500;padding:0.1rem 0;color-scheme:dark;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Amount (₹L / withdrawal)</div>
+          <input type="number" value="${s.amt}" step="0.1" min="0"
+            onchange="updateSwp(${s.id},'amt',this.value)"
+            style="width:100%;background:transparent;border:none;border-bottom:1px solid #f0a030;outline:none;font-family:'DM Mono',monospace;font-size:1rem;color:#f0c060;font-weight:500;padding:0.1rem 0;">
+        </div>
+        <div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Frequency</div>
+          <select onchange="updateSwp(${s.id},'frequency',this.value)"
+            style="width:100%;background:var(--card);border:none;border-bottom:1px solid #f0a030;outline:none;font-family:'DM Mono',monospace;font-size:0.9rem;color:#f0c060;font-weight:500;padding:0.1rem 0;cursor:pointer;">
+            <option value="monthly" ${s.frequency==='monthly'?'selected':''}>Monthly</option>
+            <option value="quarterly" ${s.frequency==='quarterly'?'selected':''}>Quarterly</option>
+            <option value="yearly" ${s.frequency==='yearly'?'selected':''}>Yearly</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// initialise lists on load
+renderLoans(); renderWithdrawals(); renderSwps();
+
+function downloadPageImage(btn) {
+  btn.textContent = '⏳ Capturing…';
+  btn.disabled = true;
+  html2canvas(document.querySelector('.container'), {
+    backgroundColor: '#0e0f11',
+    scale: 2,
+    useCORS: true,
+    logging: false
+  }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = 'corpus-planner-' + new Date().toISOString().slice(0,10) + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    btn.textContent = '⬇ Save as Image';
+    btn.disabled = false;
+  }).catch(()=>{ btn.textContent = '⬇ Save as Image'; btn.disabled = false; });
+}
+
+function toggleTable() {
+  showAll = !showAll;
+  document.getElementById('toggleBtn').textContent = showAll ? 'Show Less' : 'Show All';
+  renderTable(window._plannerData, window._plannerMr);
+}
+
+function toggleView() {
+  viewMode = viewMode === 'yearly' ? 'monthly' : 'yearly';
+  showAll = false;
+  document.getElementById('toggleBtn').textContent = 'Show All';
+  document.getElementById('viewToggleBtn').textContent = viewMode === 'yearly' ? 'Monthly View' : 'Yearly View';
+  document.getElementById('tableTitle').textContent = viewMode === 'yearly' ? 'Year-by-year breakdown' : 'Month-by-month breakdown';
+  renderTable(window._plannerData, window._plannerMr);
+}
+
+function renderTable(data, mr) {
+  if (!data || !data.length) return;
+  const searchVal = (document.getElementById('tableSearch')?.value||'').trim().toLowerCase();
+
+  const pillMap={1:'<span class="phase-pill pill-1">Accumulation</span>',3:'<span class="phase-pill pill-3">EMI Active</span>',4:'<span class="phase-pill pill-4">Depleted</span>'};
+  const barCols={1:'var(--accent)',2:'var(--accent3)',3:'var(--accent2)',4:'var(--danger)'};
+
+  let rows;
+  if (viewMode === 'yearly') {
+    const allYears=[...new Set(data.map(d=>d.date.split('-')[0]))];
+    rows = allYears.map(yr=>{
+      const yrows=data.filter(d=>d.date.startsWith(yr));
+      return yrows[yrows.length-1];
+    });
+  } else {
+    rows = data;
+  }
+
+  // Filter by search
+  if (searchVal) rows = rows.filter(r => r.date.toLowerCase().includes(searchVal));
+
+  const maxBal = Math.max(...data.map(r=>r.balance));
+  const pageSize = viewMode === 'yearly' ? 12 : 24;
+  const display = showAll ? rows : rows.slice(0, pageSize);
+  const dateCol = viewMode === 'yearly' ? 'Year' : 'Month';
+
+  let tHtml=`<table><thead><tr>
+    <th>${dateCol}</th><th>Phase</th><th>Corpus Balance</th><th>Monthly Yield</th><th>SIP In</th><th>Outflows</th><th>Net / Month</th>
+  </tr></thead><tbody>`;
+
+  display.forEach(row=>{
+    const yld = row.balance * mr;
+    const totalOut = (row.withdrawal||0) + (row.swpOut||0);
+    const net = yld + row.sip - totalOut;
+    const pct = maxBal>0 ? (row.balance/maxBal*100).toFixed(1) : 0;
+    const dateLabel = viewMode === 'yearly' ? row.date.split('-')[0] : row.date;
+    tHtml+=`<tr>
+      <td>${dateLabel}</td>
+      <td>${pillMap[row.phase]||''}</td>
+      <td class="${row.phase===4?'neg':row.phase===1?'pos':row.phase===2?'amwarn':'cinfo'}">
+        ${fmtBig(row.balance)}
+        <div class="bar-container"><div class="bar-fill" style="width:${pct}%;background:${barCols[row.phase]}"></div></div>
+      </td>
+      <td class="pos">${fmt(yld)}</td>
+      <td class="amwarn">${row.sip>0?'+'+fmt(row.sip):'—'}</td>
+      <td class="${totalOut>0?'neg':''}">${totalOut>0?'-'+fmt(totalOut):'—'}</td>
+      <td class="${net>0?'pos':net<0?'neg':''}">${totalOut>0?(net>=0?'+':'')+fmt(net):'—'}</td>
+    </tr>`;
+  });
+
+  if (!showAll && rows.length > pageSize) {
+    tHtml+=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:0.7rem">… ${rows.length-pageSize} more ${viewMode==='yearly'?'years':'months'} — click Show All</td></tr>`;
+  }
+  if (rows.length === 0) {
+    tHtml+=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:0.7rem">No results for "${searchVal}"</td></tr>`;
+  }
+
+  tHtml+='</tbody></table>';
+  document.getElementById('tableContainer').innerHTML=tHtml;
+}
+
+const fmt = n => {
+  if (n===null||isNaN(n)) return '—';
+  const a=Math.abs(n), s=n<0?'-':'';
+  return s+'₹'+a.toFixed(2)+'L';
+};
+const fmtBig = n => {
+  if (n===null||isNaN(n)) return '—';
+  const a=Math.abs(n), s=n<0?'-':'';
+  return a>=100 ? s+'₹'+(a/100).toFixed(2)+'Cr' : s+'₹'+a.toFixed(1)+'L';
+};
+
+function monthDiff(a,b) {
+  const [y1,m1]=a.split('-').map(Number),[y2,m2]=b.split('-').map(Number);
+  return (y2-y1)*12+(m2-m1);
+}
+function addMonths(d,n) {
+  const [y,m]=d.split('-').map(Number);
+  const dt=new Date(y,m-1+n,1);
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+}
+function calcEMI(principalL,annualRate,years) {
+  const r=annualRate/100/12,n=years*12;
+  return principalL*r*Math.pow(1+r,n)/(Math.pow(1+r,n)-1);
+}
+function getSIP3(monthIndex, base, stepupPct, cap, stepupType) {
+  const year = Math.floor(monthIndex / 12);
+  let sip = (stepupType === 'fixed')
+    ? base + (stepupPct / 100000) * year
+    : base * Math.pow(1 + stepupPct / 100, year);
+  if (cap > 0) sip = Math.min(sip, cap);
+  return sip;
+}
+
+function recalc() {
+  const rate = parseFloat(document.getElementById('rate').value) || 0;
+  const mr   = rate / 100 / 12;
+
+  // ── Build live loan states from the loans array ──────────────────────
+  const loanStates = loans.filter(l => l.loan > 0 && l.emiStart && l.tenure > 0).map(l => ({
+    id: l.id,
+    emiStart: l.emiStart,
+    loanRate: l.loanRate,
+    loan: l.loan,
+    tenure: l.tenure,
+    payMonths: l.tenure * 12,
+    outstandingLoan: l.loan * 100,
+    emiBase: calcEMI(l.loan * 100, l.loanRate, l.tenure),
+    currentEmi: calcEMI(l.loan * 100, l.loanRate, l.tenure),
+    remainingLoanMonths: l.tenure * 12,
+    loanR: l.loanRate / 100 / 12
+  }));
+
+  // ── Simulation bounds ─────────────────────────────────────────────────
+  const candidates = [];
+  if (sipPhases.length) candidates.push([...sipPhases].sort((a,b) => a.startDate.localeCompare(b.startDate))[0].startDate);
+  if (loanStates.length) candidates.push([...loanStates].sort((a,b) => a.emiStart.localeCompare(b.emiStart))[0].emiStart);
+  const activeSWPs = swps.filter(s => s.amt > 0 && s.startDate && s.endDate);
+  if (activeSWPs.length) candidates.push([...activeSWPs].sort((a,b) => a.startDate.localeCompare(b.startDate))[0].startDate);
+
+  if (!candidates.length) {
+    document.getElementById('summary').innerHTML = '<div style="color:var(--muted);font-size:0.75rem;padding:0.5rem 0;">Add SIP phases, loans, or SWPs to see projections.</div>';
+    document.getElementById('verdict').innerHTML = '';
+    document.getElementById('tableContainer').innerHTML = '';
+    return;
+  }
+
+  const simStart = candidates.sort()[0];
+
+  let simEnd = addMonths(simStart, 120); // fallback if no explicit end dates are present
+  const activeSipPhases = sipPhases.filter(p => p.startDate && p.endDate);
+  if (activeSipPhases.length) {
+    const sipEnds = activeSipPhases.map(p => p.endDate);
+    const latestSipEnd = sipEnds.sort().reverse()[0];
+    if (latestSipEnd > simEnd) simEnd = latestSipEnd;
+  }
+  if (loanStates.length) {
+    const loanEnds = loanStates.map(l => addMonths(l.emiStart, l.payMonths));
+    const latestLoanEnd = loanEnds.sort().reverse()[0];
+    if (latestLoanEnd > simEnd) simEnd = latestLoanEnd;
+  }
+  for (const swp of activeSWPs) {
+    if (swp.endDate > simEnd) simEnd = swp.endDate;
+  }
+  if (simEnd <= simStart) simEnd = addMonths(simStart, 12);
+
+  const totalSimMonths = monthDiff(simStart, simEnd) + 1;
+
+  // ── Sort withdrawals ───────────────────────────────────────────────────
+  const sortedW = [...withdrawals].filter(w => w.amt > 0 && w.date).sort((a,b) => a.date.localeCompare(b.date));
+
+  // ── Simulation state ───────────────────────────────────────────────────
+  let balance = 0;
+  const data  = [];
+  let depletedMonth = null, peakBalance = 0;
+  const appliedW  = new Set();
+  const impactMsgs = [];
+
+  // Earliest loan start for summary stats
+  const firstLoanState = loanStates.length ? [...loanStates].sort((a,b) => a.emiStart.localeCompare(b.emiStart))[0] : null;
+  let corpusAtEmiStart = 0, sipAtEmiStart = 0, firstEmiCaptured = false;
+  const totalEmiBase = loanStates.reduce((s, l) => s + l.emiBase, 0);
+
+  // ── applyWithdrawal helper ─────────────────────────────────────────────
+  function applyWithdrawal(w, date) {
+    const actual = Math.max(0, Math.min(w.amt, balance));
+    const withdrawLabel = actual < w.amt
+      ? `${fmt(actual)} <span style="color:#f0a060">(of ${fmt(w.amt)} requested — corpus limit)</span>`
+      : `${fmt(actual)}`;
+    balance -= actual;
+    appliedW.add(w.id);
+
+    if (w.type === 'loan_prepay') {
+      const lState = w.loanId
+        ? loanStates.find(l => l.id === w.loanId)
+        : loanStates[0];
+
+      if (!lState || lState.outstandingLoan <= 0) {
+        impactMsgs.push(`<span style="color:#c090ff">💸 <strong>#${w.id} Prepay</strong> ${date}: No active loan to prepay.</span>`);
+        return actual;
+      }
+
+      const emiMonthIndex = monthDiff(lState.emiStart, date);
+      const outstanding   = Math.max(0, lState.outstandingLoan - actual);
+      lState.outstandingLoan = outstanding;
+
+      if (w.reduce === 'tenure') {
+        let newMonthsNeeded = 0;
+        if (outstanding > 0 && lState.currentEmi > outstanding * lState.loanR) {
+          newMonthsNeeded = Math.ceil(
+            -Math.log(1 - outstanding * lState.loanR / lState.currentEmi) / Math.log(1 + lState.loanR)
+          );
+        }
+        const prevRemaining = lState.remainingLoanMonths;
+        lState.remainingLoanMonths = emiMonthIndex + newMonthsNeeded;
+        const loanEndDate  = addMonths(lState.emiStart, lState.remainingLoanMonths);
+        const originalEnd  = addMonths(lState.emiStart, lState.payMonths);
+        const savedFromOriginal = lState.payMonths - lState.remainingLoanMonths;
+        const savedThisTime     = prevRemaining - lState.remainingLoanMonths;
+        const savedYrs = (savedFromOriginal / 12).toFixed(1);
+        const loanLabel = loans.findIndex(l => l.id === lState.id) + 1;
+        impactMsgs.push(`<span style="color:#c090ff">📋 <strong>#${w.id} Loan ${loanLabel} Prepay — Reduce Tenure</strong> ${date}:<br>
+          &nbsp;Withdrew <strong>${withdrawLabel}</strong> &nbsp;|&nbsp; Outstanding → <strong>${fmtBig(outstanding)}</strong><br>
+          &nbsp;Loan now ends <strong>${loanEndDate}</strong> (was <strong>${originalEnd}</strong>) — saved <strong>${savedFromOriginal} months (${savedYrs}yr)</strong>, this prepay saved <strong>${savedThisTime} months</strong> &nbsp;|&nbsp; EMI unchanged <strong>${fmt(lState.currentEmi)}</strong></span>`);
+      } else {
+        const moRemaining = Math.max(0, lState.remainingLoanMonths - emiMonthIndex);
+        const newEmi = moRemaining > 0 ? calcEMI(outstanding, lState.loanRate, moRemaining / 12) : 0;
+        const savedPerMonth = lState.currentEmi - newEmi;
+        const loanEndDate = addMonths(lState.emiStart, lState.remainingLoanMonths);
+        const loanLabel = loans.findIndex(l => l.id === lState.id) + 1;
+        lState.currentEmi = newEmi;
+        impactMsgs.push(`<span style="color:#c090ff">📋 <strong>#${w.id} Loan ${loanLabel} Prepay — Reduce EMI</strong> ${date}:<br>
+          &nbsp;Withdrew <strong>${withdrawLabel}</strong> &nbsp;|&nbsp; Outstanding → <strong>${fmtBig(outstanding)}</strong><br>
+          &nbsp;New EMI <strong>${fmt(newEmi)}</strong> (was <strong>${fmt(lState.emiBase)}</strong>, saving <strong>${fmt(savedPerMonth)}/mo</strong>) &nbsp;|&nbsp; Loan ends <strong>${loanEndDate}</strong></span>`);
+      }
+    } else {
+      impactMsgs.push(`<span style="color:#c090ff">💸 <strong>#${w.id} Personal Use</strong> ${date}:<br>
+        &nbsp;Withdrew <strong>${withdrawLabel}</strong> from corpus &nbsp;|&nbsp; No impact on loan</span>`);
+    }
+    return actual;
+  }
+
+  // ── Main simulation loop ───────────────────────────────────────────────
+  for (let m = 0; m < totalSimMonths; m++) {
+    const date   = addMonths(simStart, m);
+    const sipNow = getSipForDate(date);
+
+    // Capture corpus at first loan's EMI start
+    if (!firstEmiCaptured && firstLoanState && date === firstLoanState.emiStart) {
+      corpusAtEmiStart = balance;
+      sipAtEmiStart    = sipNow;
+      firstEmiCaptured = true;
+    }
+
+    // Apply lumpsum withdrawals before this month's update
+    let lumpsumOut = 0;
+    for (const w of sortedW) {
+      if (!appliedW.has(w.id) && w.date === date) lumpsumOut += applyWithdrawal(w, date);
+    }
+
+    // Sum EMI across all active loans and update each outstanding balance
+    let emiNow = 0;
+    for (const ls of loanStates) {
+      if (date < ls.emiStart) continue;
+      const emiIdx = monthDiff(ls.emiStart, date);
+      if (emiIdx < ls.remainingLoanMonths && ls.outstandingLoan > 0) {
+        emiNow += ls.currentEmi;
+        const interestPart  = ls.outstandingLoan * ls.loanR;
+        const principalPart = ls.currentEmi - interestPart;
+        ls.outstandingLoan  = Math.max(0, ls.outstandingLoan - principalPart);
+      }
+    }
+
+    // Apply SWPs
+    let swpOut = 0;
+    for (const swp of activeSWPs) {
+      if (date < swp.startDate || date > swp.endDate) continue;
+      const mFromSwpStart = monthDiff(swp.startDate, date);
+      const applies = swp.frequency === 'monthly'
+        || (swp.frequency === 'quarterly' && mFromSwpStart % 3 === 0)
+        || (swp.frequency === 'yearly'    && mFromSwpStart % 12 === 0);
+      if (applies) {
+        const actual = Math.min(swp.amt, Math.max(0, balance));
+        balance -= actual;
+        swpOut  += actual;
+      }
+    }
+
+    balance = balance * (1 + mr) + sipNow - emiNow;
+    if (balance < 0 && !depletedMonth) depletedMonth = addMonths(simStart, m + 1);
+    const anyEmiActive = loanStates.some(ls => date >= ls.emiStart && monthDiff(ls.emiStart, date) < ls.remainingLoanMonths && ls.outstandingLoan > 0);
+    const phase = anyEmiActive ? (balance >= 0 ? 3 : 4) : 1;
+    peakBalance = Math.max(peakBalance, Math.max(balance, 0));
+    data.push({ date, balance: Math.max(balance, 0), rawBalance: balance, phase, sip: sipNow, withdrawal: emiNow, swpOut, lumpsum: lumpsumOut });
+  }
+
+  // ── Prepay impact display ──────────────────────────────────────────────
+  document.getElementById('prepayImpact').innerHTML = impactMsgs.length
+    ? impactMsgs.join('<br>')
+    : (sortedW.length ? '<span style="color:var(--muted)">Withdrawal dates not yet reached in simulation.</span>' : '');
+
+  // ── Summary stats ──────────────────────────────────────────────────────
+  const finalBalance = data[data.length-1]?.balance || 0;
+  const yieldAtStart = corpusAtEmiStart * mr;
+  const netDrainY1   = totalEmiBase - sipAtEmiStart;
+
+  // Year when combined SIP first covers total EMI
+  let sipCoversEmiYear = null;
+  if (totalEmiBase > 0) {
+    for (let m = 0; m < totalSimMonths; m++) {
+      const date = addMonths(simStart, m);
+      if (getSipForDate(date) >= totalEmiBase) { sipCoversEmiYear = date.split('-')[0]; break; }
+    }
+  }
+
+  // Build multi-loan EMI sub-label
+  const loanEmiDetail = loanStates.length > 1
+    ? loanStates.map((l, i) => `Loan ${i+1}: ${fmt(l.emiBase)}`).join(' · ')
+    : loanStates.length === 1
+      ? `₹${loanStates[0].loan}Cr @ ${loanStates[0].loanRate}% × ${loanStates[0].tenure}yr`
+      : 'No loans';
+
+  const emiStartDisplay = firstLoanState
+    ? (([y,m]) => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]+' '+y)(firstLoanState.emiStart.split('-'))
+    : '—';
+
+  const maxTenure = loanStates.length ? Math.max(...loanStates.map(l => l.tenure)) : 0;
+
+  document.getElementById('summary').innerHTML = `
+    <div class="stat good">
+      <div class="stat-label">Corpus at EMI Start</div>
+      <div class="stat-value">${fmtBig(corpusAtEmiStart)}</div>
+      <div class="stat-sub">${emiStartDisplay}, after all SIPs</div>
+    </div>
+    <div class="stat info">
+      <div class="stat-label">Total Monthly EMI</div>
+      <div class="stat-value">${fmt(totalEmiBase)}</div>
+      <div class="stat-sub">${loanEmiDetail}</div>
+    </div>
+    <div class="stat warn">
+      <div class="stat-label">SIP at EMI Start</div>
+      <div class="stat-value">${fmt(sipAtEmiStart)}</div>
+      <div class="stat-sub">Net drain: ${fmt(Math.max(netDrainY1,0))}/mo</div>
+    </div>
+    <div class="stat ${depletedMonth?'danger':'good'}">
+      <div class="stat-label">${depletedMonth?'Corpus Depletes':'Final Balance'}</div>
+      <div class="stat-value">${depletedMonth||fmtBig(finalBalance)}</div>
+      <div class="stat-sub">${depletedMonth?'Before loans end':maxTenure?'After '+maxTenure+' yrs':'End of simulation'}</div>
+    </div>
+    <div class="stat warn">
+      <div class="stat-label">Peak Corpus</div>
+      <div class="stat-value">${fmtBig(peakBalance)}</div>
+      <div class="stat-sub">Highest point reached</div>
+    </div>
+    <div class="stat info">
+      <div class="stat-label">SIP Covers Full EMI</div>
+      <div class="stat-value">${sipCoversEmiYear||'—'}</div>
+      <div class="stat-sub">${sipCoversEmiYear?'SIP ≥ EMI from '+sipCoversEmiYear:totalEmiBase>0?'SIP never reaches EMI':'No loans'}</div>
+    </div>
+  `;
+
+  // ── Verdict ────────────────────────────────────────────────────────────
+  const surplusAtStart = yieldAtStart + sipAtEmiStart - totalEmiBase;
+  let vHtml;
+  if (!data.length) {
+    vHtml = '';
+  } else if (!depletedMonth) {
+    vHtml = `<div class="verdict pass">
+      <strong>✓ Corpus sustains all outflows — with a growing final balance</strong>
+      ${firstLoanState ? `Corpus reaches <strong>${fmtBig(corpusAtEmiStart)}</strong> by ${emiStartDisplay}. SIP <strong>${fmt(sipAtEmiStart)}</strong>, yield <strong>${fmt(yieldAtStart)}</strong> — total inflow <strong>${fmt(yieldAtStart+sipAtEmiStart)}</strong> vs EMI <strong>${fmt(totalEmiBase)}</strong>, net surplus <strong>${fmt(surplusAtStart)}/mo</strong>${sipCoversEmiYear?' — SIP covers full EMI by <strong>'+sipCoversEmiYear+'</strong>':''}.` : ''}
+      After simulation, <strong>${fmtBig(finalBalance)}</strong> remains.
+    </div>`;
+  } else {
+    const firstEmiStart = firstLoanState?.emiStart || simStart;
+    const mosCovered = monthDiff(firstEmiStart, depletedMonth);
+    const maxPayMonths = loanStates.length ? Math.max(...loanStates.map(l => l.payMonths)) : 0;
+    vHtml = `<div class="verdict fail">
+      <strong>✗ Corpus depletes at ${depletedMonth} (${(mosCovered/12).toFixed(1)} yrs into EMI)</strong>
+      ${maxPayMonths ? `Covers <strong>${mosCovered}</strong> of <strong>${maxPayMonths}</strong> loan months. ` : ''}Try increasing base SIP, step-up, or return rate.
+    </div>`;
+  }
+  document.getElementById('verdict').innerHTML = vHtml;
+
+  // Chart
+  const canvas = document.getElementById('chart');
+  const W = canvas.offsetWidth||880, H=260;
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  // Sample every 3 months for performance
+  const pts=[];
+  for (let i=0;i<data.length;i+=3) pts.push(data[i]);
+  if (data.length) pts.push(data[data.length-1]);
+
+  // Build cumulative outflows series (EMI + SWP) aligned to pts
+  let cumWithdrawn = 0;
+  let dataIdx = 0;
+  const cumSeries = []; // parallel to pts
+  for (let i=0; i<pts.length; i++) {
+    while (dataIdx < data.length && data[dataIdx].date < pts[i].date) {
+      cumWithdrawn += (data[dataIdx].withdrawal||0) + (data[dataIdx].swpOut||0);
+      dataIdx++;
+    }
+    cumSeries.push(cumWithdrawn);
+  }
+
+  // Chart boundary: first loan emiStart (if any)
+  const chartEmiStart = firstLoanState?.emiStart || null;
+
+  const pad={top:28,right:20,bottom:36,left:72};
+  const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
+
+  const maxCorpus = Math.max(...pts.map(p=>p.balance));
+  const maxCum = Math.max(...cumSeries);
+  const maxV = Math.max(maxCorpus, maxCum) * 1.1 || 1;
+
+  const xs = i => pad.left+(i/(pts.length-1||1))*cw;
+  const ys = v => pad.top+ch-(v/maxV)*ch;
+
+  // Grid lines
+  ctx.strokeStyle='#2a2d35'; ctx.lineWidth=1;
+  for (let i=0;i<=4;i++) {
+    const y=pad.top+(i/4)*ch;
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(pad.left+cw,y); ctx.stroke();
+    const v=maxV*(1-i/4);
+    ctx.fillStyle='#6b7080'; ctx.font='10px DM Mono'; ctx.textAlign='right';
+    ctx.fillText(v>=100?'₹'+(v/100).toFixed(1)+'Cr':'₹'+v.toFixed(0)+'L', pad.left-6, y+4);
+  }
+
+  // Phase boundary lines (one per loan)
+  loanStates.forEach((ls, i) => {
+    const phaseLines = [{date:ls.emiStart,label:`Loan ${i+1} EMI`,col:'rgba(96,200,240,0.5)'}];
+    phaseLines.forEach(ph=>{
+      const idx=pts.findIndex(p=>p.date>=ph.date);
+      if(idx<0)return;
+      const x=xs(idx);
+      ctx.strokeStyle=ph.col; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,pad.top+ch); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle=ph.col.replace('0.5','0.9'); ctx.font='9px DM Mono'; ctx.textAlign='center';
+      ctx.fillText(ph.label,x,pad.top-8);
+    });
+  });
+
+  // --- Corpus area fill ---
+  ctx.beginPath();
+  ctx.moveTo(xs(0),ys(0));
+  pts.forEach((p,i)=>ctx.lineTo(xs(i),ys(p.balance)));
+  ctx.lineTo(xs(pts.length-1),ys(0)); ctx.closePath();
+  const gradCorpus=ctx.createLinearGradient(0,pad.top,0,pad.top+ch);
+  gradCorpus.addColorStop(0,'rgba(200,240,96,0.08)');
+  gradCorpus.addColorStop(0.5,'rgba(96,200,240,0.06)');
+  gradCorpus.addColorStop(1,'rgba(96,200,240,0.01)');
+  ctx.fillStyle=gradCorpus; ctx.fill();
+
+  // --- Cumulative outflows area fill ---
+  const outflowStartIdx = chartEmiStart ? pts.findIndex(p=>p.date>=chartEmiStart) : -1;
+  const cumStartIdx = outflowStartIdx >= 0 ? outflowStartIdx : (cumSeries.some(v=>v>0) ? 0 : -1);
+  if (cumStartIdx >= 0) {
+    ctx.beginPath();
+    ctx.moveTo(xs(cumStartIdx), ys(0));
+    for (let i=cumStartIdx; i<pts.length; i++) ctx.lineTo(xs(i), ys(cumSeries[i]));
+    ctx.lineTo(xs(pts.length-1), ys(0)); ctx.closePath();
+    const gradWith = ctx.createLinearGradient(0,pad.top,0,pad.top+ch);
+    gradWith.addColorStop(0,'rgba(240,96,160,0.12)');
+    gradWith.addColorStop(1,'rgba(240,96,160,0.02)');
+    ctx.fillStyle=gradWith; ctx.fill();
+  }
+
+  // --- Corpus line (phase-colored) ---
+  const pcols={1:'#c8f060',2:'#f0c060',3:'#60c8f0',4:'#f06060'};
+  pts.forEach((p,i)=>{
+    if(!i)return;
+    ctx.beginPath(); ctx.strokeStyle=pcols[p.phase]||'#60c8f0'; ctx.lineWidth=2.5;
+    ctx.moveTo(xs(i-1),ys(pts[i-1].balance)); ctx.lineTo(xs(i),ys(p.balance)); ctx.stroke();
+  });
+
+  // --- Cumulative outflows line ---
+  if (cumStartIdx >= 0) {
+    ctx.beginPath();
+    ctx.strokeStyle='#f060a0'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+    for (let i=cumStartIdx; i<pts.length; i++) {
+      if(i===cumStartIdx) ctx.moveTo(xs(i),ys(cumSeries[i]));
+      else ctx.lineTo(xs(i),ys(cumSeries[i]));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    const lastX = xs(pts.length-1);
+    const lastY = ys(cumSeries[cumSeries.length-1]);
+    ctx.fillStyle='#f060a0'; ctx.font='9px DM Mono'; ctx.textAlign='right';
+    ctx.fillText('₹'+((cumSeries[cumSeries.length-1])/100).toFixed(1)+'Cr outflows', lastX-4, lastY-5);
+  }
+
+  // --- Tooltip hover ---
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const i = Math.round((mx - pad.left) / (cw / (pts.length-1||1)));
+    const ci = Math.max(0, Math.min(pts.length-1, i));
+    const p = pts[ci];
+    if (!p) return;
+
+    drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates);
+
+    const tx = xs(ci), ty = ys(p.balance);
+    ctx.beginPath(); ctx.arc(tx, ty, 4, 0, Math.PI*2);
+    ctx.fillStyle = pcols[p.phase]||'#60c8f0'; ctx.fill();
+
+    const withdrawn = cumSeries[ci];
+    const yield_ = p.balance * mr;
+    const totalOut = (p.withdrawal||0) + (p.swpOut||0);
+    const net = yield_ + p.sip - totalOut;
+    const lines = [
+      p.date,
+      `Corpus: ${p.balance>=100?'₹'+(p.balance/100).toFixed(2)+'Cr':'₹'+p.balance.toFixed(1)+'L'}`,
+      `Yield:  ${yield_>=100?'₹'+(yield_/100).toFixed(2)+'Cr':'₹'+yield_.toFixed(2)+'L'}/mo`,
+      p.sip>0 ? `SIP in: +₹${p.sip.toFixed(2)}L` : null,
+      p.withdrawal>0 ? `EMI out: -₹${p.withdrawal.toFixed(2)}L` : null,
+      (p.swpOut||0)>0 ? `SWP out: -₹${p.swpOut.toFixed(2)}L` : null,
+      totalOut>0 ? `Net:    ${net>=0?'+':''}₹${net.toFixed(2)}L/mo` : null,
+      withdrawn>0 ? `Cumul. outflows: ₹${(withdrawn/100).toFixed(2)}Cr` : null,
+    ].filter(Boolean);
+
+    const bw=190, bh=lines.length*14+16, bx=Math.min(tx+8, W-bw-4), by=Math.max(pad.top, ty-bh/2);
+    ctx.fillStyle='rgba(22,24,28,0.95)'; ctx.strokeStyle='#2a2d35'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#e8eaf0'; ctx.font='9px DM Mono'; ctx.textAlign='left';
+    lines.forEach((l,li)=> ctx.fillText(l, bx+8, by+13+li*14));
+  };
+
+  canvas.onmouseleave = () => {
+    drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates);
+  };
+
+  // Initial static draw
+  drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates);
+
+  // X axis labels
+  ctx.fillStyle='#6b7080'; ctx.font='9px DM Mono'; ctx.textAlign='center';
+  const step=Math.max(1,Math.floor(pts.length/9));
+  pts.forEach((p,i)=>{ if(i%step===0) ctx.fillText(p.date,xs(i),H-4); });
+
+  // Table — store data globally for toggle
+  window._plannerData = data;
+  window._plannerMr = mr;
+  renderTable(data, mr);
+}
+
+function drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStatesArg) {
+  ctx.clearRect(0,0,W,H);
+  const xs = i => pad.left+(i/(pts.length-1||1))*cw;
+  const ys = v => pad.top+ch-(v/maxV)*ch;
+
+  // Grid
+  ctx.strokeStyle='#2a2d35'; ctx.lineWidth=1;
+  for (let i=0;i<=4;i++) {
+    const y=pad.top+(i/4)*ch;
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(pad.left+cw,y); ctx.stroke();
+    const v=maxV*(1-i/4);
+    ctx.fillStyle='#6b7080'; ctx.font='10px DM Mono'; ctx.textAlign='right';
+    ctx.fillText(v>=100?'₹'+(v/100).toFixed(1)+'Cr':'₹'+v.toFixed(0)+'L', pad.left-6, y+4);
+  }
+
+  // Phase lines (one per loan)
+  (loanStatesArg||[]).forEach((ls, i) => {
+    const idx=pts.findIndex(p=>p.date>=ls.emiStart);
+    if(idx<0)return;
+    const x=xs(idx);
+    ctx.strokeStyle='rgba(96,200,240,0.5)'; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,pad.top+ch); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(96,200,240,0.9)'; ctx.font='9px DM Mono'; ctx.textAlign='center';
+    ctx.fillText(`Loan ${i+1} EMI`,x,pad.top-8);
+  });
+
+  // Corpus area
+  ctx.beginPath();
+  ctx.moveTo(xs(0),ys(0));
+  pts.forEach((p,i)=>ctx.lineTo(xs(i),ys(p.balance)));
+  ctx.lineTo(xs(pts.length-1),ys(0)); ctx.closePath();
+  const gc=ctx.createLinearGradient(0,pad.top,0,pad.top+ch);
+  gc.addColorStop(0,'rgba(200,240,96,0.08)'); gc.addColorStop(0.5,'rgba(96,200,240,0.06)'); gc.addColorStop(1,'rgba(96,200,240,0.01)');
+  ctx.fillStyle=gc; ctx.fill();
+
+  // Outflows area
+  if (cumStartIdx >= 0) {
+    ctx.beginPath();
+    ctx.moveTo(xs(cumStartIdx), ys(0));
+    for (let i=cumStartIdx; i<pts.length; i++) ctx.lineTo(xs(i), ys(cumSeries[i]));
+    ctx.lineTo(xs(pts.length-1), ys(0)); ctx.closePath();
+    const gw=ctx.createLinearGradient(0,pad.top,0,pad.top+ch);
+    gw.addColorStop(0,'rgba(240,96,160,0.12)'); gw.addColorStop(1,'rgba(240,96,160,0.02)');
+    ctx.fillStyle=gw; ctx.fill();
+  }
+
+  // Corpus line
+  pts.forEach((p,i)=>{
+    if(!i)return;
+    ctx.beginPath(); ctx.strokeStyle=pcols[p.phase]||'#60c8f0'; ctx.lineWidth=2.5;
+    ctx.moveTo(xs(i-1),ys(pts[i-1].balance)); ctx.lineTo(xs(i),ys(p.balance)); ctx.stroke();
+  });
+
+  // Outflows line
+  if (cumStartIdx >= 0) {
+    ctx.beginPath(); ctx.strokeStyle='#f060a0'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+    for (let i=cumStartIdx; i<pts.length; i++) {
+      if(i===cumStartIdx) ctx.moveTo(xs(i),ys(cumSeries[i]));
+      else ctx.lineTo(xs(i),ys(cumSeries[i]));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    const lastX=xs(pts.length-1), lastY=ys(cumSeries[cumSeries.length-1]);
+    ctx.fillStyle='#f060a0'; ctx.font='9px DM Mono'; ctx.textAlign='right';
+    ctx.fillText('₹'+((cumSeries[cumSeries.length-1])/100).toFixed(1)+'Cr outflows', lastX-4, lastY-5);
+  }
+
+  // X labels
+  ctx.fillStyle='#6b7080'; ctx.font='9px DM Mono'; ctx.textAlign='center';
+  const step=Math.max(1,Math.floor(pts.length/9));
+  pts.forEach((p,i)=>{ if(i%step===0) ctx.fillText(p.date,xs(i),H-4); });
+}
+
+function downloadExcel() {
+  const data = window._plannerData;
+  const mr = window._plannerMr;
+  if (!data || !data.length) return;
+
+  const isMonthly = viewMode === 'monthly';
+  const phaseNames = { 1:'Accumulation', 3:'EMI Active', 4:'Depleted' };
+
+  // Build rows
+  let rows;
+  if (isMonthly) {
+    rows = data;
+  } else {
+    const allYears = [...new Set(data.map(d => d.date.split('-')[0]))];
+    rows = allYears.map(yr => {
+      const yrows = data.filter(d => d.date.startsWith(yr));
+      return yrows[yrows.length - 1];
+    });
+  }
+
+  // Summary inputs block
+  const inputRows = [
+    ['CORPUS PLANNER — PROJECTION SUMMARY'],
+    [],
+    ['--- INPUTS ---'],
+    ...sipPhases.map((ph, i) => [`SIP Phase ${i+1} (${ph.startDate}–${ph.endDate})`, `₹${ph.baseSip}L/mo, ${ph.stepupType === 'fixed' ? `₹${ph.stepup}/yr top-up` : `${ph.stepup}%/yr step-up`}`]),
+    ...loans.map((l, i) => [`Loan ${i+1}`, `₹${l.loan}Cr @ ${l.loanRate}% × ${l.tenure}yr, EMI from ${l.emiStart}`]),
+    ...swps.map((s, i) => [`SWP ${i+1}`, `₹${s.amt}L ${s.frequency} from ${s.startDate} to ${s.endDate}`]),
+    ['Return Rate (% p.a.)', document.getElementById('rate').value],
+    [],
+  ];
+
+  // Header row for data table
+  const headers = [
+    isMonthly ? 'Month' : 'Year',
+    'Phase',
+    'Corpus Balance (₹L)',
+    'Monthly Yield (₹L)',
+    'SIP Invested (₹L)',
+    'Outflows (₹L)',
+    'Net Change (₹L)'
+  ];
+
+  const dataRows = rows.map(row => {
+    const yld = row.balance * mr;
+    const totalOut = (row.withdrawal||0) + (row.swpOut||0);
+    const net = yld + row.sip - totalOut;
+    return [
+      isMonthly ? row.date : row.date.split('-')[0],
+      phaseNames[row.phase] || '',
+      parseFloat(row.balance.toFixed(2)),
+      parseFloat(yld.toFixed(2)),
+      parseFloat(row.sip.toFixed(2)),
+      parseFloat(totalOut.toFixed(2)),
+      parseFloat(net.toFixed(2))
+    ];
+  });
+
+  // Build worksheet
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Summary + Data
+  const wsData = [...inputRows, headers, ...dataRows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 14 }, { wch: 22 }, { wch: 22 },
+    { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 18 }
+  ];
+
+  // Style the title row
+  const titleCell = ws['A1'];
+  if (titleCell) titleCell.s = { font: { bold: true, sz: 13 } };
+
+  // Style header row (row = inputRows.length + 1, 1-indexed)
+  const headerRowIdx = inputRows.length; // 0-indexed in aoa
+  headers.forEach((_, ci) => {
+    const addr = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
+    if (!ws[addr]) return;
+    ws[addr].s = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '1C1F26' } },
+      alignment: { horizontal: ci === 0 || ci === 1 ? 'left' : 'right' }
+    };
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, isMonthly ? 'Monthly Breakdown' : 'Yearly Breakdown');
+
+  // Sheet 2: Monthly (if we're in yearly mode, add full monthly as bonus)
+  if (!isMonthly) {
+    const monthlyHeaders = ['Month','Phase','Corpus Balance (₹L)','Monthly Yield (₹L)','SIP Invested (₹L)','Outflows (₹L)','Net Change (₹L)'];
+    const monthlyRows = data.map(row => {
+      const yld = row.balance * mr;
+      const totalOut = (row.withdrawal||0) + (row.swpOut||0);
+      const net = yld + row.sip - totalOut;
+      return [
+        row.date,
+        phaseNames[row.phase] || '',
+        parseFloat(row.balance.toFixed(2)),
+        parseFloat(yld.toFixed(2)),
+        parseFloat(row.sip.toFixed(2)),
+        parseFloat(totalOut.toFixed(2)),
+        parseFloat(net.toFixed(2))
+      ];
+    });
+    const ws2 = XLSX.utils.aoa_to_sheet([monthlyHeaders, ...monthlyRows]);
+    ws2['!cols'] = ws['!cols'];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Full Monthly Data');
+  }
+
+  const filename = `corpus-planner-${isMonthly ? 'monthly' : 'yearly'}-${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+window.addEventListener('load', () => { renderSipPhases(); renderLoans(); renderWithdrawals(); renderSwps(); recalc(); });
+window.addEventListener('resize', recalc);
+</script>
+</body>
+</html>
