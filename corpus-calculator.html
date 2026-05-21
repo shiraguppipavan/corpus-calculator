@@ -91,13 +91,37 @@
   .sp-item { background: var(--surface); border-radius: 6px; padding: 0.5rem 0.7rem; }
   .sp-year { font-size: 0.6rem; color: var(--muted); }
   .sp-sip { font-size: 0.85rem; color: var(--accent2); font-weight: 500; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.15s ease; }
+  .modal-backdrop.open { display: flex; opacity: 1; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem 1.6rem 1.3rem; max-width: 380px; width: calc(100% - 2rem); box-shadow: 0 20px 60px rgba(0,0,0,0.5); transform: translateY(8px) scale(0.98); transition: transform 0.18s ease; }
+  .modal-backdrop.open .modal { transform: translateY(0) scale(1); }
+  .modal-title { font-size: 0.95rem; font-weight: 500; color: #fff; margin-bottom: 0.4rem; letter-spacing: 0.01em; }
+  .modal-body { font-size: 0.78rem; color: var(--muted); line-height: 1.6; margin-bottom: 1.25rem; }
+  .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+  .modal-btn { background: none; border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.65rem; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; letter-spacing: 0.08em; text-transform: uppercase; transition: border-color 0.12s, color 0.12s; }
+  .modal-btn:hover { border-color: var(--muted); color: #fff; }
+  .modal-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 </style>
 </head>
 <body>
+<div id="confirmModal" class="modal-backdrop" onclick="if(event.target===this)closeConfirm(false)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="modal-title" id="confirmTitle">Clear all inputs?</div>
+    <div class="modal-body">This will reset SIP phases, loans, withdrawals, SWPs and the return rate. This action cannot be undone.</div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeConfirm(false)">Cancel</button>
+      <button class="modal-btn danger" onclick="closeConfirm(true)">Clear all</button>
+    </div>
+  </div>
+</div>
 <div class="container">
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.25rem;">
     <h1>Corpus Planner</h1>
-    <button id="dlImgBtn" onclick="downloadPageImage(this)" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;margin-top:0.4rem;white-space:nowrap;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">⬇ Save as Image</button>
+    <div style="display:flex;gap:0.5rem;margin-top:0.4rem;">
+      <button id="dlImgBtn" onclick="downloadPageImage(this)" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">⬇ Save as Image</button>
+      <button id="clearBtn" onclick="clearAllState()" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕ Clear</button>
+    </div>
   </div>
   <p class="subtitle">Dynamic SIP Phases · Step-up SIP · SWP · Prepayment · Home Loan Payoff</p>
 
@@ -671,6 +695,39 @@ function loadState() {
     if (Array.isArray(s.swps))        { swps        = s.swps;        swpNextId   = s.swpNextId   || (Math.max(0, ...swps.map(x=>x.id))+1); }
     return true;
   } catch (e) { return false; }
+}
+
+let _confirmResolve = null;
+function openConfirm() {
+  return new Promise(resolve => {
+    _confirmResolve = resolve;
+    const m = document.getElementById('confirmModal');
+    m.classList.add('open');
+    document.addEventListener('keydown', confirmKeyHandler);
+  });
+}
+function closeConfirm(result) {
+  const m = document.getElementById('confirmModal');
+  m.classList.remove('open');
+  document.removeEventListener('keydown', confirmKeyHandler);
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
+function confirmKeyHandler(e) {
+  if (e.key === 'Escape') closeConfirm(false);
+  else if (e.key === 'Enter') closeConfirm(true);
+}
+
+async function clearAllState() {
+  const ok = await openConfirm();
+  if (!ok) return;
+  try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
+  sipPhases = []; nextPhaseId = 1;
+  loans = []; lNextId = 1;
+  withdrawals = []; wNextId = 1;
+  swps = []; swpNextId = 1;
+  document.getElementById('rate').value = 0;
+  renderSipPhases(); renderLoans(); renderWithdrawals(); renderSwps();
+  recalc();
 }
 
 function recalc() {
