@@ -48,10 +48,13 @@
   .stat.danger .stat-value { color: var(--danger); } .stat.info .stat-value { color: var(--accent2); }
   .stat-sub { font-size: 0.63rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.4; }
 
-  .verdict { border-radius: 8px; padding: 1.1rem 1.4rem; margin-bottom: 1.5rem; font-size: 0.82rem; line-height: 1.8; border: 1px solid; }
+  .verdict { border-radius: 8px; padding: 1.1rem 1.4rem; margin-bottom: 1.5rem; font-size: 0.82rem; line-height: 1.7; border: 1px solid; }
   .verdict.pass { border-color: var(--accent); background: rgba(200,240,96,0.05); }
   .verdict.fail { border-color: var(--danger); background: rgba(240,96,96,0.05); }
-  .verdict strong { font-size: 0.95rem; display: block; margin-bottom: 0.35rem; }
+  .verdict > strong:first-child { font-size: 0.95rem; display: block; margin-bottom: 0.5rem; }
+  .verdict.pass > strong:first-child { color: var(--accent); }
+  .verdict.fail > strong:first-child { color: var(--danger); }
+  .verdict strong { color: #fff; }
 
   .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
   .chart-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
@@ -513,11 +516,21 @@ renderLoans(); renderWithdrawals(); renderSwps();
 function downloadPageImage(btn) {
   btn.textContent = '⏳ Capturing…';
   btn.disabled = true;
-  html2canvas(document.querySelector('.container'), {
+  html2canvas(document.body, {
     backgroundColor: '#0e0f11',
     scale: 2,
     useCORS: true,
-    logging: false
+    logging: false,
+    onclone: (doc) => {
+      const c = doc.querySelector('.container');
+      if (c) {
+        c.style.maxWidth = '980px';
+        c.style.padding = '2.5rem 2rem';
+        c.style.boxSizing = 'content-box';
+      }
+      doc.body.style.padding = '0';
+      doc.body.style.margin = '0';
+    }
   }).then(canvas => {
     const link = document.createElement('a');
     link.download = 'corpus-planner-' + new Date().toISOString().slice(0,10) + '.png';
@@ -634,7 +647,34 @@ function calcEMI(principalL,annualRate,years) {
   const r=annualRate/100/12,n=years*12;
   return principalL*r*Math.pow(1+r,n)/(Math.pow(1+r,n)-1);
 }
+const STATE_KEY = 'corpusPlannerState_v1';
+function saveState() {
+  try {
+    sessionStorage.setItem(STATE_KEY, JSON.stringify({
+      rate: document.getElementById('rate').value,
+      sipPhases, nextPhaseId,
+      loans, lNextId,
+      withdrawals, wNextId,
+      swps, swpNextId
+    }));
+  } catch (e) {}
+}
+function loadState() {
+  try {
+    const raw = sessionStorage.getItem(STATE_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (s.rate !== undefined) document.getElementById('rate').value = s.rate;
+    if (Array.isArray(s.sipPhases))   { sipPhases   = s.sipPhases;   nextPhaseId = s.nextPhaseId || (Math.max(0, ...sipPhases.map(p=>p.id))+1); }
+    if (Array.isArray(s.loans))       { loans       = s.loans;       lNextId     = s.lNextId     || (Math.max(0, ...loans.map(l=>l.id))+1); }
+    if (Array.isArray(s.withdrawals)) { withdrawals = s.withdrawals; wNextId     = s.wNextId     || (Math.max(0, ...withdrawals.map(w=>w.id))+1); }
+    if (Array.isArray(s.swps))        { swps        = s.swps;        swpNextId   = s.swpNextId   || (Math.max(0, ...swps.map(x=>x.id))+1); }
+    return true;
+  } catch (e) { return false; }
+}
+
 function recalc() {
+  saveState();
   const rate = parseFloat(document.getElementById('rate').value) || 0;
   const mr   = rate / 100 / 12;
 
@@ -1274,7 +1314,7 @@ function downloadExcel() {
   XLSX.writeFile(wb, filename);
 }
 
-window.addEventListener('load', () => { renderSipPhases(); renderLoans(); renderWithdrawals(); renderSwps(); recalc(); });
+window.addEventListener('load', () => { loadState(); renderSipPhases(); renderLoans(); renderWithdrawals(); renderSwps(); recalc(); });
 window.addEventListener('resize', recalc);
 </script>
 </body>
