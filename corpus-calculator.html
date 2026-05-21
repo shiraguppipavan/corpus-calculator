@@ -108,18 +108,18 @@
   </div>
 
   <div class="inputs-section">
+    <div class="section-label">Portfolio Return</div>
+    <div class="inputs-grid">
+      <div class="field highlight"><label>Return Rate (% p.a.)</label><input type="number" id="rate" value="0" step="0.5" oninput="recalc()"></div>
+    </div>
+  </div>
+
+  <div class="inputs-section">
     <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
       <span>Loans</span>
       <button onclick="addLoan()" style="background:none;border:1px solid var(--accent2);color:var(--accent2);font-family:'DM Mono',monospace;font-size:0.6rem;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;">+ Add Loan</button>
     </div>
     <div id="loanList" style="display:flex;flex-direction:column;gap:0.6rem;margin-top:0.5rem;"></div>
-  </div>
-
-  <div class="inputs-section">
-    <div class="section-label">Portfolio Return</div>
-    <div class="inputs-grid">
-      <div class="field highlight"><label>Return Rate (% p.a.)</label><input type="number" id="rate" value="0" step="0.5" oninput="recalc()"></div>
-    </div>
   </div>
 
   <div class="inputs-section">
@@ -201,7 +201,10 @@ function getSipForDate(date) {
 
 function addSipPhase() {
   const id = nextPhaseId++;
-  sipPhases.push({ id, startDate: '2027-04', endDate: '2055-01', baseSip: 0.5, stepup: 0, stepupType: 'pct', maxSip: 0 });
+  const today = new Date();
+  const startYM = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0');
+  const endYM = (today.getFullYear()+25) + '-' + String(today.getMonth()+1).padStart(2,'0');
+  sipPhases.push({ id, startDate: startYM, endDate: endYM, baseSip: 0.5, stepup: 0, stepupType: 'pct', maxSip: 0 });
   renderSipPhases();
   recalc();
 }
@@ -544,7 +547,7 @@ function renderTable(data, mr) {
   if (!data || !data.length) return;
   const searchVal = (document.getElementById('tableSearch')?.value||'').trim().toLowerCase();
 
-  const pillMap={1:'<span class="phase-pill pill-1">Accumulation</span>',3:'<span class="phase-pill pill-3">EMI Active</span>',4:'<span class="phase-pill pill-4">Depleted</span>'};
+  const pillMap={1:'<span class="phase-pill pill-1">Accumulation</span>',2:'<span class="phase-pill pill-2">Withdrawal</span>',3:'<span class="phase-pill pill-3">EMI Active</span>',4:'<span class="phase-pill pill-4">Depleted</span>'};
   const barCols={1:'var(--accent)',2:'var(--accent3)',3:'var(--accent2)',4:'var(--danger)'};
 
   let rows;
@@ -552,7 +555,13 @@ function renderTable(data, mr) {
     const allYears=[...new Set(data.map(d=>d.date.split('-')[0]))];
     rows = allYears.map(yr=>{
       const yrows=data.filter(d=>d.date.startsWith(yr));
-      return yrows[yrows.length-1];
+      const dec = yrows[yrows.length-1];
+      const sumSip   = yrows.reduce((s,r)=>s+(r.sip||0),0);
+      const sumEmi   = yrows.reduce((s,r)=>s+(r.withdrawal||0),0);
+      const sumSwp   = yrows.reduce((s,r)=>s+(r.swpOut||0),0);
+      const sumLump  = yrows.reduce((s,r)=>s+(r.lumpsum||0),0);
+      const sumYield = yrows.reduce((s,r)=>s+(r.balance||0)*mr,0);
+      return { ...dec, sip: sumSip, withdrawal: sumEmi, swpOut: sumSwp, lumpsum: sumLump, totalOut: sumEmi+sumSwp+sumLump, _yieldDisplay: sumYield };
     });
   } else {
     rows = data;
@@ -571,8 +580,8 @@ function renderTable(data, mr) {
   </tr></thead><tbody>`;
 
   display.forEach(row=>{
-    const yld = row.balance * mr;
-    const totalOut = (row.withdrawal||0) + (row.swpOut||0);
+    const yld = row._yieldDisplay != null ? row._yieldDisplay : row.balance * mr;
+    const totalOut = row.totalOut != null ? row.totalOut : ((row.withdrawal||0) + (row.swpOut||0) + (row.lumpsum||0));
     const net = yld + row.sip - totalOut;
     const pct = maxBal>0 ? (row.balance/maxBal*100).toFixed(1) : 0;
     const dateLabel = viewMode === 'yearly' ? row.date.split('-')[0] : row.date;
@@ -625,15 +634,6 @@ function calcEMI(principalL,annualRate,years) {
   const r=annualRate/100/12,n=years*12;
   return principalL*r*Math.pow(1+r,n)/(Math.pow(1+r,n)-1);
 }
-function getSIP3(monthIndex, base, stepupPct, cap, stepupType) {
-  const year = Math.floor(monthIndex / 12);
-  let sip = (stepupType === 'fixed')
-    ? base + (stepupPct / 100000) * year
-    : base * Math.pow(1 + stepupPct / 100, year);
-  if (cap > 0) sip = Math.min(sip, cap);
-  return sip;
-}
-
 function recalc() {
   const rate = parseFloat(document.getElementById('rate').value) || 0;
   const mr   = rate / 100 / 12;
@@ -654,8 +654,9 @@ function recalc() {
   }));
 
   // ── Simulation bounds ─────────────────────────────────────────────────
+  const activeSipPhases = sipPhases.filter(p => p.startDate && p.endDate);
   const candidates = [];
-  if (sipPhases.length) candidates.push([...sipPhases].sort((a,b) => a.startDate.localeCompare(b.startDate))[0].startDate);
+  if (activeSipPhases.length) candidates.push([...activeSipPhases].sort((a,b) => a.startDate.localeCompare(b.startDate))[0].startDate);
   if (loanStates.length) candidates.push([...loanStates].sort((a,b) => a.emiStart.localeCompare(b.emiStart))[0].emiStart);
   const activeSWPs = swps.filter(s => s.amt > 0 && s.startDate && s.endDate);
   if (activeSWPs.length) candidates.push([...activeSWPs].sort((a,b) => a.startDate.localeCompare(b.startDate))[0].startDate);
@@ -670,7 +671,6 @@ function recalc() {
   const simStart = candidates.sort()[0];
 
   let simEnd = addMonths(simStart, 120); // fallback if no explicit end dates are present
-  const activeSipPhases = sipPhases.filter(p => p.startDate && p.endDate);
   if (activeSipPhases.length) {
     const sipEnds = activeSipPhases.map(p => p.endDate);
     const latestSipEnd = sipEnds.sort().reverse()[0];
@@ -803,6 +803,7 @@ function recalc() {
         || (swp.frequency === 'yearly'    && mFromSwpStart % 12 === 0);
       if (applies) {
         const actual = Math.min(swp.amt, Math.max(0, balance));
+        if (actual < swp.amt && !depletedMonth) depletedMonth = date;
         balance -= actual;
         swpOut  += actual;
       }
@@ -811,9 +812,12 @@ function recalc() {
     balance = balance * (1 + mr) + sipNow - emiNow;
     if (balance < 0 && !depletedMonth) depletedMonth = addMonths(simStart, m + 1);
     const anyEmiActive = loanStates.some(ls => date >= ls.emiStart && monthDiff(ls.emiStart, date) < ls.remainingLoanMonths && ls.outstandingLoan > 0);
-    const phase = anyEmiActive ? (balance >= 0 ? 3 : 4) : 1;
+    const phase = anyEmiActive
+      ? (balance >= 0 ? 3 : 4)
+      : (balance < 0 ? 4 : (swpOut > 0 ? 2 : 1));
     peakBalance = Math.max(peakBalance, Math.max(balance, 0));
-    data.push({ date, balance: Math.max(balance, 0), rawBalance: balance, phase, sip: sipNow, withdrawal: emiNow, swpOut, lumpsum: lumpsumOut });
+    const totalOut = emiNow + swpOut + lumpsumOut;
+    data.push({ date, balance: Math.max(balance, 0), rawBalance: balance, phase, sip: sipNow, withdrawal: emiNow, swpOut, lumpsum: lumpsumOut, totalOut });
   }
 
   // ── Prepay impact display ──────────────────────────────────────────────
@@ -867,7 +871,7 @@ function recalc() {
     <div class="stat ${depletedMonth?'danger':'good'}">
       <div class="stat-label">${depletedMonth?'Corpus Depletes':'Final Balance'}</div>
       <div class="stat-value">${depletedMonth||fmtBig(finalBalance)}</div>
-      <div class="stat-sub">${depletedMonth?'Before loans end':maxTenure?'After '+maxTenure+' yrs':'End of simulation'}</div>
+      <div class="stat-sub">${depletedMonth?(loanStates.length?'Before loans end':'During SWP'):maxTenure?'After '+maxTenure+' yrs':'End of simulation'}</div>
     </div>
     <div class="stat warn">
       <div class="stat-label">Peak Corpus</div>
@@ -883,6 +887,8 @@ function recalc() {
 
   // ── Verdict ────────────────────────────────────────────────────────────
   const surplusAtStart = yieldAtStart + sipAtEmiStart - totalEmiBase;
+  const totalSwpDrawn = data.reduce((s,r)=>s+(r.swpOut||0),0);
+  const swpLine = activeSWPs.length ? `<br>Total SWP drawn over simulation: <strong>${fmtBig(totalSwpDrawn)}</strong> across ${activeSWPs.length} SWP${activeSWPs.length>1?'s':''}.` : '';
   let vHtml;
   if (!data.length) {
     vHtml = '';
@@ -890,15 +896,15 @@ function recalc() {
     vHtml = `<div class="verdict pass">
       <strong>✓ Corpus sustains all outflows — with a growing final balance</strong>
       ${firstLoanState ? `Corpus reaches <strong>${fmtBig(corpusAtEmiStart)}</strong> by ${emiStartDisplay}. SIP <strong>${fmt(sipAtEmiStart)}</strong>, yield <strong>${fmt(yieldAtStart)}</strong> — total inflow <strong>${fmt(yieldAtStart+sipAtEmiStart)}</strong> vs EMI <strong>${fmt(totalEmiBase)}</strong>, net surplus <strong>${fmt(surplusAtStart)}/mo</strong>${sipCoversEmiYear?' — SIP covers full EMI by <strong>'+sipCoversEmiYear+'</strong>':''}.` : ''}
-      After simulation, <strong>${fmtBig(finalBalance)}</strong> remains.
+      After simulation, <strong>${fmtBig(finalBalance)}</strong> remains.${swpLine}
     </div>`;
   } else {
     const firstEmiStart = firstLoanState?.emiStart || simStart;
     const mosCovered = monthDiff(firstEmiStart, depletedMonth);
     const maxPayMonths = loanStates.length ? Math.max(...loanStates.map(l => l.payMonths)) : 0;
     vHtml = `<div class="verdict fail">
-      <strong>✗ Corpus depletes at ${depletedMonth} (${(mosCovered/12).toFixed(1)} yrs into EMI)</strong>
-      ${maxPayMonths ? `Covers <strong>${mosCovered}</strong> of <strong>${maxPayMonths}</strong> loan months. ` : ''}Try increasing base SIP, step-up, or return rate.
+      <strong>✗ Corpus depletes at ${depletedMonth}${loanStates.length?' ('+(mosCovered/12).toFixed(1)+' yrs into EMI)':''}</strong>
+      ${maxPayMonths ? `Covers <strong>${mosCovered}</strong> of <strong>${maxPayMonths}</strong> loan months. ` : ''}Try increasing base SIP, step-up, or return rate.${swpLine}
     </div>`;
   }
   document.getElementById('verdict').innerHTML = vHtml;
@@ -910,25 +916,24 @@ function recalc() {
   const ctx=canvas.getContext('2d');
   ctx.clearRect(0,0,W,H);
 
-  // Sample every 3 months for performance
+  // Sample every 3 months for performance; ensure last data point is included exactly once.
   const pts=[];
   for (let i=0;i<data.length;i+=3) pts.push(data[i]);
-  if (data.length) pts.push(data[data.length-1]);
+  if (data.length && pts[pts.length-1] !== data[data.length-1]) pts.push(data[data.length-1]);
 
-  // Build cumulative outflows series (EMI + SWP) aligned to pts
+  // Build cumulative outflows series (EMI + SWP + lumpsum) aligned to pts.
+  // Walk through `data` in lockstep; include outflows through-and-including pts[i].date
+  // so the last sample isn't short by one bucket.
   let cumWithdrawn = 0;
   let dataIdx = 0;
   const cumSeries = []; // parallel to pts
   for (let i=0; i<pts.length; i++) {
-    while (dataIdx < data.length && data[dataIdx].date < pts[i].date) {
-      cumWithdrawn += (data[dataIdx].withdrawal||0) + (data[dataIdx].swpOut||0);
+    while (dataIdx < data.length && data[dataIdx].date <= pts[i].date) {
+      cumWithdrawn += (data[dataIdx].totalOut||0);
       dataIdx++;
     }
     cumSeries.push(cumWithdrawn);
   }
-
-  // Chart boundary: first loan emiStart (if any)
-  const chartEmiStart = firstLoanState?.emiStart || null;
 
   const pad={top:28,right:20,bottom:36,left:72};
   const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
@@ -950,19 +955,20 @@ function recalc() {
     ctx.fillText(v>=100?'₹'+(v/100).toFixed(1)+'Cr':'₹'+v.toFixed(0)+'L', pad.left-6, y+4);
   }
 
-  // Phase boundary lines (one per loan)
-  loanStates.forEach((ls, i) => {
-    const phaseLines = [{date:ls.emiStart,label:`Loan ${i+1} EMI`,col:'rgba(96,200,240,0.5)'}];
-    phaseLines.forEach(ph=>{
-      const idx=pts.findIndex(p=>p.date>=ph.date);
-      if(idx<0)return;
-      const x=xs(idx);
-      ctx.strokeStyle=ph.col; ctx.setLineDash([4,4]);
-      ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,pad.top+ch); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle=ph.col.replace('0.5','0.9'); ctx.font='9px DM Mono'; ctx.textAlign='center';
-      ctx.fillText(ph.label,x,pad.top-8);
-    });
+  // Phase boundary lines (one per loan, one per SWP)
+  const boundaryLines = [
+    ...loanStates.map((ls, i) => ({date: ls.emiStart, label: `Loan ${i+1} EMI`, col: 'rgba(96,200,240,0.5)'})),
+    ...activeSWPs.map((s, i) => ({date: s.startDate, label: `SWP ${i+1}`, col: 'rgba(240,192,96,0.5)'})),
+  ];
+  boundaryLines.forEach(ph=>{
+    const idx=pts.findIndex(p=>p.date>=ph.date);
+    if(idx<0)return;
+    const x=xs(idx);
+    ctx.strokeStyle=ph.col; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,pad.top+ch); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=ph.col.replace('0.5','0.9'); ctx.font='9px DM Mono'; ctx.textAlign='center';
+    ctx.fillText(ph.label,x,pad.top-8);
   });
 
   // --- Corpus area fill ---
@@ -977,8 +983,8 @@ function recalc() {
   ctx.fillStyle=gradCorpus; ctx.fill();
 
   // --- Cumulative outflows area fill ---
-  const outflowStartIdx = chartEmiStart ? pts.findIndex(p=>p.date>=chartEmiStart) : -1;
-  const cumStartIdx = outflowStartIdx >= 0 ? outflowStartIdx : (cumSeries.some(v=>v>0) ? 0 : -1);
+  // Start at the first sample with any outflow (EMI, SWP, or lumpsum) — not gated on EMI.
+  const cumStartIdx = cumSeries.findIndex(v => v > 0);
   if (cumStartIdx >= 0) {
     ctx.beginPath();
     ctx.moveTo(xs(cumStartIdx), ys(0));
@@ -1022,7 +1028,7 @@ function recalc() {
     const p = pts[ci];
     if (!p) return;
 
-    drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates);
+    drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates, activeSWPs);
 
     const tx = xs(ci), ty = ys(p.balance);
     ctx.beginPath(); ctx.arc(tx, ty, 4, 0, Math.PI*2);
@@ -1030,7 +1036,7 @@ function recalc() {
 
     const withdrawn = cumSeries[ci];
     const yield_ = p.balance * mr;
-    const totalOut = (p.withdrawal||0) + (p.swpOut||0);
+    const totalOut = p.totalOut != null ? p.totalOut : ((p.withdrawal||0) + (p.swpOut||0) + (p.lumpsum||0));
     const net = yield_ + p.sip - totalOut;
     const lines = [
       p.date,
@@ -1039,6 +1045,7 @@ function recalc() {
       p.sip>0 ? `SIP in: +₹${p.sip.toFixed(2)}L` : null,
       p.withdrawal>0 ? `EMI out: -₹${p.withdrawal.toFixed(2)}L` : null,
       (p.swpOut||0)>0 ? `SWP out: -₹${p.swpOut.toFixed(2)}L` : null,
+      (p.lumpsum||0)>0 ? `Lumpsum: -₹${p.lumpsum.toFixed(2)}L` : null,
       totalOut>0 ? `Net:    ${net>=0?'+':''}₹${net.toFixed(2)}L/mo` : null,
       withdrawn>0 ? `Cumul. outflows: ₹${(withdrawn/100).toFixed(2)}Cr` : null,
     ].filter(Boolean);
@@ -1051,11 +1058,11 @@ function recalc() {
   };
 
   canvas.onmouseleave = () => {
-    drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates);
+    drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates, activeSWPs);
   };
 
   // Initial static draw
-  drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates);
+  drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStates, activeSWPs);
 
   // X axis labels
   ctx.fillStyle='#6b7080'; ctx.font='9px DM Mono'; ctx.textAlign='center';
@@ -1068,7 +1075,7 @@ function recalc() {
   renderTable(data, mr);
 }
 
-function drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStatesArg) {
+function drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pcols, maxV, loanStatesArg, swpsArg) {
   ctx.clearRect(0,0,W,H);
   const xs = i => pad.left+(i/(pts.length-1||1))*cw;
   const ys = v => pad.top+ch-(v/maxV)*ch;
@@ -1083,16 +1090,20 @@ function drawChartStatic(pts, cumSeries, pad, cw, ch, W, H, ctx, cumStartIdx, pc
     ctx.fillText(v>=100?'₹'+(v/100).toFixed(1)+'Cr':'₹'+v.toFixed(0)+'L', pad.left-6, y+4);
   }
 
-  // Phase lines (one per loan)
-  (loanStatesArg||[]).forEach((ls, i) => {
-    const idx=pts.findIndex(p=>p.date>=ls.emiStart);
+  // Phase lines (one per loan, one per SWP)
+  const boundaries = [
+    ...(loanStatesArg||[]).map((ls, i) => ({date: ls.emiStart, label: `Loan ${i+1} EMI`, col: 'rgba(96,200,240,'})),
+    ...(swpsArg||[]).map((s, i) => ({date: s.startDate, label: `SWP ${i+1}`, col: 'rgba(240,192,96,'})),
+  ];
+  boundaries.forEach(b => {
+    const idx=pts.findIndex(p=>p.date>=b.date);
     if(idx<0)return;
     const x=xs(idx);
-    ctx.strokeStyle='rgba(96,200,240,0.5)'; ctx.setLineDash([4,4]);
+    ctx.strokeStyle=b.col+'0.5)'; ctx.setLineDash([4,4]);
     ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,pad.top+ch); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle='rgba(96,200,240,0.9)'; ctx.font='9px DM Mono'; ctx.textAlign='center';
-    ctx.fillText(`Loan ${i+1} EMI`,x,pad.top-8);
+    ctx.fillStyle=b.col+'0.9)'; ctx.font='9px DM Mono'; ctx.textAlign='center';
+    ctx.fillText(b.label,x,pad.top-8);
   });
 
   // Corpus area
@@ -1147,9 +1158,9 @@ function downloadExcel() {
   if (!data || !data.length) return;
 
   const isMonthly = viewMode === 'monthly';
-  const phaseNames = { 1:'Accumulation', 3:'EMI Active', 4:'Depleted' };
+  const phaseNames = { 1:'Accumulation', 2:'Withdrawal', 3:'EMI Active', 4:'Depleted' };
 
-  // Build rows
+  // Build rows — for yearly view, aggregate across each year (don't just keep the Dec snapshot).
   let rows;
   if (isMonthly) {
     rows = data;
@@ -1157,7 +1168,13 @@ function downloadExcel() {
     const allYears = [...new Set(data.map(d => d.date.split('-')[0]))];
     rows = allYears.map(yr => {
       const yrows = data.filter(d => d.date.startsWith(yr));
-      return yrows[yrows.length - 1];
+      const dec = yrows[yrows.length - 1];
+      const sumSip   = yrows.reduce((s,r)=>s+(r.sip||0),0);
+      const sumEmi   = yrows.reduce((s,r)=>s+(r.withdrawal||0),0);
+      const sumSwp   = yrows.reduce((s,r)=>s+(r.swpOut||0),0);
+      const sumLump  = yrows.reduce((s,r)=>s+(r.lumpsum||0),0);
+      const sumYield = yrows.reduce((s,r)=>s+(r.balance||0)*mr,0);
+      return { ...dec, sip: sumSip, withdrawal: sumEmi, swpOut: sumSwp, lumpsum: sumLump, totalOut: sumEmi+sumSwp+sumLump, _yieldDisplay: sumYield };
     });
   }
 
@@ -1168,6 +1185,7 @@ function downloadExcel() {
     ['--- INPUTS ---'],
     ...sipPhases.map((ph, i) => [`SIP Phase ${i+1} (${ph.startDate}–${ph.endDate})`, `₹${ph.baseSip}L/mo, ${ph.stepupType === 'fixed' ? `₹${ph.stepup}/yr top-up` : `${ph.stepup}%/yr step-up`}`]),
     ...loans.map((l, i) => [`Loan ${i+1}`, `₹${l.loan}Cr @ ${l.loanRate}% × ${l.tenure}yr, EMI from ${l.emiStart}`]),
+    ...withdrawals.map((w, i) => [`Lumpsum ${i+1}`, `₹${w.amt}L on ${w.date} (${w.type}${w.type==='loan_prepay'?', reduce '+w.reduce:''})`]),
     ...swps.map((s, i) => [`SWP ${i+1}`, `₹${s.amt}L ${s.frequency} from ${s.startDate} to ${s.endDate}`]),
     ['Return Rate (% p.a.)', document.getElementById('rate').value],
     [],
@@ -1185,8 +1203,8 @@ function downloadExcel() {
   ];
 
   const dataRows = rows.map(row => {
-    const yld = row.balance * mr;
-    const totalOut = (row.withdrawal||0) + (row.swpOut||0);
+    const yld = row._yieldDisplay != null ? row._yieldDisplay : row.balance * mr;
+    const totalOut = row.totalOut != null ? row.totalOut : ((row.withdrawal||0) + (row.swpOut||0) + (row.lumpsum||0));
     const net = yld + row.sip - totalOut;
     return [
       isMonthly ? row.date : row.date.split('-')[0],
@@ -1235,7 +1253,7 @@ function downloadExcel() {
     const monthlyHeaders = ['Month','Phase','Corpus Balance (₹L)','Monthly Yield (₹L)','SIP Invested (₹L)','Outflows (₹L)','Net Change (₹L)'];
     const monthlyRows = data.map(row => {
       const yld = row.balance * mr;
-      const totalOut = (row.withdrawal||0) + (row.swpOut||0);
+      const totalOut = row.totalOut != null ? row.totalOut : ((row.withdrawal||0) + (row.swpOut||0) + (row.lumpsum||0));
       const net = yld + row.sip - totalOut;
       return [
         row.date,
